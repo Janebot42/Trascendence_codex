@@ -1,0 +1,210 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Transcendence Pong</title>
+    <link rel="stylesheet" href="/ui/app.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <h1>Transcendence Pong</h1>
+          <p id="sessionLine">Checking session...</p>
+        </div>
+        <div class="header-actions">
+          <span class="status-pill" id="socketStatus">Offline</span>
+          <div class="header-avatar hidden" id="headerAvatar">?</div>
+          <button type="button" id="profileMenuButton" class="secondary hidden">Profile</button>
+          <button type="button" id="securityMenuButton" class="secondary hidden">Security</button>
+          <button type="button" id="logoutButton" class="secondary hidden">Logout</button>
+        </div>
+      </header>
+
+      <div class="notice hidden" id="notice" role="status"></div>
+
+      <section class="auth-grid" id="authView">
+        <form class="panel" id="registerForm">
+          <h2>Create account</h2>
+          <label>Username <input name="username" autocomplete="username" required /></label>
+          <label>Email <input name="email" type="email" autocomplete="email" required /></label>
+          <label>Password <input name="password" type="password" autocomplete="new-password" required /></label>
+          <button type="submit">Register</button>
+        </form>
+
+        <form class="panel" id="loginForm">
+          <h2>Login</h2>
+          <label>Username <input name="username" autocomplete="username" required /></label>
+          <label>Password <input name="password" type="password" autocomplete="current-password" required /></label>
+          <button type="submit">Login</button>
+          <a class="button-link" href="/auth/oauth/42">Login with 42</a>
+        </form>
+
+        <form class="panel hidden" id="secondFactorForm">
+          <h2>Second factor</h2>
+          <input type="hidden" name="challengeToken" id="challengeToken" />
+          <label>
+            Method
+            <select name="method">
+              <option value="totp">TOTP</option>
+              <option value="recovery_code">Recovery code</option>
+            </select>
+          </label>
+          <label>Code <input name="code" autocomplete="one-time-code" /></label>
+          <button type="submit">Continue</button>
+        </form>
+      </section>
+
+      <section class="game-layout hidden" id="appView">
+        <section class="play-area">
+          <div class="scorebar">
+            <div>
+              <strong id="roomLabel">Lobby</strong>
+              <span id="gameState">No active match</span>
+            </div>
+            <div class="score" id="scoreBox">0 : 0</div>
+            <div class="match-actions">
+              <label class="compact-field">
+                Bot
+                <select id="botDifficulty">
+                  <option value="1">1 - Easy</option>
+                  <option value="2">2 - Casual</option>
+                  <option value="3" selected>3 - Normal</option>
+                  <option value="4">4 - Hard</option>
+                  <option value="5">5 - Expert</option>
+                </select>
+              </label>
+              <button type="button" id="queueButton">Find match</button>
+            </div>
+          </div>
+          <div class="game-canvas" id="gameCanvas">
+            <div class="goal-banner hidden" id="goalBanner"></div>
+          </div>
+          <div class="controls">
+            <button type="button" id="upButton">▲</button>
+            <button type="button" id="downButton">▼</button>
+          </div>
+        </section>
+
+        <aside class="side-stack">
+          <section class="panel">
+            <h2>Lobby chat</h2>
+            <div class="chat-log" id="chatLog"></div>
+            <form class="chat-form" id="chatForm">
+              <input name="body" maxlength="1000" autocomplete="off" />
+              <button type="submit">Send</button>
+            </form>
+          </section>
+        </aside>
+
+        <section class="panel users-panel">
+          <h2>Players</h2>
+          <div class="list" id="usersList"></div>
+        </section>
+
+        <section class="panel">
+          <h2>Statistics</h2>
+          <div class="stats-grid" id="statsBox"></div>
+          <h3>Leaderboard</h3>
+          <div class="list compact" id="leaderboardList"></div>
+          <h3>Match history</h3>
+          <div class="list compact" id="historyList"></div>
+        </section>
+      </section>
+
+      <footer class="app-footer">
+        <a href="/privacy">Privacy Policy</a>
+        <a href="/terms">Terms of Service</a>
+      </footer>
+
+      <section class="modal hidden" id="profileModal" aria-modal="true" role="dialog">
+        <div class="modal-backdrop" id="profileModalBackdrop"></div>
+        <div class="modal-panel">
+          <div class="modal-header">
+            <h2>Profile</h2>
+            <button type="button" class="secondary" id="closeProfileButton">Close</button>
+          </div>
+          <form id="profileForm">
+            <label>Display name <input name="displayName" maxlength="80" /></label>
+            <label>
+              Avatar image
+              <input id="avatarFile" name="avatarFile" type="file" accept="image/png,image/jpeg,image/gif" />
+              <span class="field-help">PNG, JPG or GIF. Maximum 256 KB. Square images around 256x256 work best.</span>
+            </label>
+            <input type="hidden" name="avatarUrl" />
+            <div class="avatar-preview" id="avatarPreview">No avatar</div>
+            <label>Bio <textarea name="bio" maxlength="280"></textarea></label>
+            <button type="submit">Save profile</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="modal hidden" id="securityModal" aria-modal="true" role="dialog">
+        <div class="modal-backdrop" id="securityModalBackdrop"></div>
+        <div class="modal-panel">
+          <div class="modal-header">
+            <h2>Security</h2>
+            <button type="button" class="secondary" id="closeSecurityButton">Close</button>
+          </div>
+
+          <form id="reauthForm">
+            <h3>Reauthenticate</h3>
+            <label>Password <input name="password" type="password" autocomplete="current-password" required /></label>
+            <label>
+              2FA method
+              <select name="secondFactorMethod">
+                <option value="">None</option>
+                <option value="totp">TOTP</option>
+                <option value="recovery_code">Recovery code</option>
+              </select>
+            </label>
+            <label>2FA code <input name="secondFactorCode" autocomplete="one-time-code" /></label>
+            <button type="submit">Reauthenticate</button>
+          </form>
+
+          <div class="divider"></div>
+
+          <section>
+            <h3>Two-factor authentication</h3>
+            <div class="inline-actions">
+              <button type="button" id="start2faButton">Start 2FA setup</button>
+              <button type="button" id="disable2faButton" class="secondary">Disable 2FA</button>
+              <button type="button" id="regenRecoveryButton" class="secondary">Regenerate recovery codes</button>
+            </div>
+            <label>Provisioning URI <textarea id="provisioningUri" readonly></textarea></label>
+            <label>Manual secret <input id="manualSecret" readonly /></label>
+            <form id="confirm2faForm">
+              <label>TOTP code <input name="code" autocomplete="one-time-code" /></label>
+              <button type="submit">Confirm 2FA</button>
+            </form>
+            <pre id="recoveryCodes">Recovery codes will appear here.</pre>
+          </section>
+
+          <div class="divider"></div>
+
+          <form id="passwordForm">
+            <h3>Change password</h3>
+            <label>New password <input name="newPassword" type="password" autocomplete="new-password" required /></label>
+            <button type="submit">Change password</button>
+          </form>
+
+          <div class="divider"></div>
+
+          <section>
+            <h3>42 OAuth</h3>
+            <div class="inline-actions">
+              <a class="button-link" href="/auth/oauth/42">Login with 42</a>
+              <form method="post" action="/auth/oauth/42/link/start">
+                <button type="submit">Link 42 account</button>
+              </form>
+              <button type="button" id="unlink42Button" class="secondary">Unlink 42</button>
+            </div>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <script type="module" src="/ui/app.js"></script>
+  </body>
+</html>

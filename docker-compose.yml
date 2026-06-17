@@ -1,0 +1,39 @@
+services:
+  app:
+    build: .
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      COOKIE_SECURE: "true"
+      SESSION_COOKIE_NAME: sid
+      SESSION_TTL_DAYS: 14
+      TOTP_ISSUER: Transcendence
+      TOTP_ENCRYPTION_KEY_BASE64: ${TOTP_ENCRYPTION_KEY_BASE64}
+      DATABASE_URL: file:/data/transcendence.db
+      OAUTH_42_CLIENT_ID: ${OAUTH_42_CLIENT_ID:-}
+      OAUTH_42_CLIENT_SECRET: ${OAUTH_42_CLIENT_SECRET:-}
+      OAUTH_42_REDIRECT_URI: ${OAUTH_42_REDIRECT_URI:-https://localhost:8443/auth/oauth/42/callback}
+      OAUTH_42_AUTHORIZE_URL: ${OAUTH_42_AUTHORIZE_URL:-https://api.intra.42.fr/oauth/authorize}
+      OAUTH_42_TOKEN_URL: ${OAUTH_42_TOKEN_URL:-https://api.intra.42.fr/oauth/token}
+      OAUTH_42_ME_URL: ${OAUTH_42_ME_URL:-https://api.intra.42.fr/v2/me}
+    volumes:
+      - app-data:/data
+    restart: unless-stopped
+
+  https:
+    image: caddy:2-alpine
+    depends_on:
+      - app
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  app-data:
+  caddy-data:
+  caddy-config:

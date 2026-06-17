@@ -1,0 +1,250 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum OAuthProvider {
+  FORTY_TWO
+}
+
+enum OAuthStatePurpose {
+  LOGIN
+  LINK
+}
+
+enum MatchStatus {
+  FINISHED
+}
+
+enum ChatMessageScope {
+  LOBBY
+  DIRECT
+  SYSTEM
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+}
+
+model User {
+  id                 String               @id
+  username           String               @unique
+  email              String?              @unique
+  displayName        String?              @map("display_name")
+  avatarUrl          String?              @map("avatar_url")
+  bio                String?
+  role               UserRole             @default(USER)
+  status             UserStatus           @default(ACTIVE)
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  passwordCredential PasswordCredential?
+  sessions           Session[]
+  loginChallenges    LoginChallenge[]
+  twoFactorTotp      TwoFactorTotp?
+  recoveryCodes      RecoveryCode[]
+  oauthAccounts      OAuthAccount[]
+  oauthStates        OAuthState[]
+  matchPlayers       MatchPlayer[]
+  wonMatches         Match[]              @relation("MatchWinner")
+  chatMessages       ChatMessage[]
+  directMessages     ChatMessage[]        @relation("ChatRecipient")
+  friendshipsSent    Friendship[]         @relation("FriendshipRequester")
+  friendshipsReceived Friendship[]        @relation("FriendshipAddressee")
+  blocksCreated      UserBlock[]          @relation("Blocker")
+  blocksReceived     UserBlock[]          @relation("Blocked")
+
+  @@map("users")
+}
+
+model PasswordCredential {
+  userId            String   @id @map("user_id")
+  passwordHash      String   @map("password_hash")
+  passwordUpdatedAt DateTime @map("password_updated_at")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("password_credentials")
+}
+
+model Session {
+  id                String    @id
+  userId            String    @map("user_id")
+  sessionTokenHash  String    @unique @map("session_token_hash")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  lastSeenAt        DateTime  @default(now()) @map("last_seen_at")
+  expiresAt         DateTime  @map("expires_at")
+  revokedAt         DateTime? @map("revoked_at")
+  ipAddress         String?   @map("ip_address")
+  userAgent         String?   @map("user_agent")
+  reauthenticatedAt DateTime? @map("reauthenticated_at")
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("sessions")
+}
+
+model LoginChallenge {
+  id                 String    @id
+  userId             String    @map("user_id")
+  challengeTokenHash String    @unique @map("challenge_token_hash")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  expiresAt          DateTime  @map("expires_at")
+  consumedAt         DateTime? @map("consumed_at")
+  ipAddress          String?   @map("ip_address")
+  userAgent          String?   @map("user_agent")
+  user               User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("login_challenges")
+}
+
+model TwoFactorTotp {
+  id              String    @id
+  userId          String    @unique @map("user_id")
+  secretEncrypted String    @map("secret_encrypted")
+  enabledAt       DateTime? @map("enabled_at")
+  confirmedAt     DateTime? @map("confirmed_at")
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("two_factor_totp")
+}
+
+model RecoveryCode {
+  id         String    @id
+  userId     String    @map("user_id")
+  codeHash   String    @map("code_hash")
+  createdAt  DateTime  @default(now()) @map("created_at")
+  usedAt     DateTime? @map("used_at")
+  replacedAt DateTime? @map("replaced_at")
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("recovery_codes")
+}
+
+model OAuthAccount {
+  id             String        @id
+  userId         String        @map("user_id")
+  provider       OAuthProvider
+  providerUserId String        @map("provider_user_id")
+  providerLogin  String?       @map("provider_login")
+  providerEmail  String?       @map("provider_email")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  user           User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerUserId])
+  @@index([userId])
+  @@map("oauth_accounts")
+}
+
+model OAuthState {
+  id               String            @id
+  provider         OAuthProvider
+  purpose          OAuthStatePurpose @default(LOGIN)
+  initiatingUserId String?           @map("initiating_user_id")
+  stateTokenHash   String            @unique @map("state_token_hash")
+  redirectTo       String?           @map("redirect_to")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  expiresAt        DateTime          @map("expires_at")
+  consumedAt       DateTime?         @map("consumed_at")
+  initiatingUser   User?             @relation(fields: [initiatingUserId], references: [id], onDelete: Cascade)
+
+  @@index([expiresAt])
+  @@map("oauth_states")
+}
+
+
+model Match {
+  id           String        @id
+  status       MatchStatus   @default(FINISHED)
+  winnerUserId String?       @map("winner_user_id")
+  startedAt    DateTime      @map("started_at")
+  finishedAt   DateTime      @map("finished_at")
+  createdAt    DateTime      @default(now()) @map("created_at")
+  winner       User?         @relation("MatchWinner", fields: [winnerUserId], references: [id], onDelete: SetNull)
+  players      MatchPlayer[]
+
+  @@index([finishedAt])
+  @@index([winnerUserId])
+  @@map("matches")
+}
+
+model MatchPlayer {
+  id        String   @id
+  matchId   String   @map("match_id")
+  userId    String   @map("user_id")
+  score     Int
+  createdAt DateTime @default(now()) @map("created_at")
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([matchId, userId])
+  @@index([userId])
+  @@map("match_players")
+}
+
+model ChatMessage {
+  id           String           @id
+  authorUserId String           @map("author_user_id")
+  recipientUserId String?       @map("recipient_user_id")
+  body         String
+  scope        ChatMessageScope @default(LOBBY)
+  readAt       DateTime?        @map("read_at")
+  createdAt    DateTime         @default(now()) @map("created_at")
+  author       User             @relation(fields: [authorUserId], references: [id], onDelete: Cascade)
+  recipient    User?            @relation("ChatRecipient", fields: [recipientUserId], references: [id], onDelete: Cascade)
+
+  @@index([scope, createdAt])
+  @@index([authorUserId])
+  @@index([recipientUserId])
+  @@map("chat_messages")
+}
+
+model Friendship {
+  id             String           @id
+  requesterId    String           @map("requester_id")
+  addresseeId    String           @map("addressee_id")
+  status         FriendshipStatus @default(PENDING)
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  requester      User             @relation("FriendshipRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee      User             @relation("FriendshipAddressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  @@unique([requesterId, addresseeId])
+  @@index([addresseeId, status])
+  @@map("friendships")
+}
+
+model UserBlock {
+  id            String   @id
+  blockerId     String   @map("blocker_id")
+  blockedUserId String   @map("blocked_user_id")
+  createdAt     DateTime @default(now()) @map("created_at")
+  blocker       User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked       User     @relation("Blocked", fields: [blockedUserId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedUserId])
+  @@index([blockedUserId])
+  @@map("user_blocks")
+}

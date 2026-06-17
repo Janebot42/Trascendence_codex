@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.npm-cache/
+.env
+*.log
+.worktrees/
+prisma/dev.db
+prisma/dev.db-journal
+*.db
+*.db-journal
