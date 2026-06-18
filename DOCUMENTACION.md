@@ -90,13 +90,15 @@ Persiste mensajes del lobby y conversaciones directas. El WebSocket distribuye m
 
 ## 5. Cliente web
 
-El cliente está en `public/` y no requiere un framework de interfaz:
+El cliente no requiere un framework de interfaz. Su fuente está en `client/` y TypeScript genera el módulo que consume el navegador:
 
 - `index.html`: estructura de autenticación, juego, chat, estadísticas y modales.
 - `app.css`: diseño adaptable para escritorio y móvil.
-- `app.js`: estado de interfaz, llamadas HTTP, WebSocket y escena Three.js.
+- `client/app.ts`: estado tipado de interfaz, contratos HTTP, WebSocket y escena Three.js.
+- `public/app.js`: resultado generado por `npm run build:client`; no debe editarse directamente.
+- `tsconfig.client.json`: configuración estricta de compilación para el navegador.
 
-Three.js se sirve desde la dependencia instalada. El navegador no necesita descargar la librería desde un CDN.
+El import map de `index.html` resuelve `three` hacia la dependencia instalada y servida por Fastify. El navegador no necesita descargar la librería desde un CDN.
 
 La escena 3D representa el estado calculado por el servidor. Los controles de teclado y táctiles envían mensajes `game:input`; no deciden la posición final de la pelota ni el resultado.
 

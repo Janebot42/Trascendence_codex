@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "node ./node_modules/typescript/bin/tsc -w -p tsconfig.json",
-    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "dev:client": "node ./node_modules/typescript/bin/tsc -w -p tsconfig.client.json",
+    "build": "npm run build:backend && npm run build:client",
+    "build:backend": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "build:client": "node ./node_modules/typescript/bin/tsc -p tsconfig.client.json",
     "start": "node dist/server.js",
     "test": "node --test tests/integration/*.mjs",
     "prisma:generate": "prisma generate",

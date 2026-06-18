@@ -122,7 +122,8 @@ Los tests de integración usan repositorios en memoria y no modifican la base de
 ## Estructura
 
 ```text
-public/                 Cliente web y escena Three.js
+client/                 Fuente TypeScript del cliente y escena Three.js
+public/                 HTML, CSS y JavaScript compilado para el navegador
 src/modules/            Dominios del backend
 src/ui/                 Rutas de archivos estáticos
 src/shared/             Criptografía, errores y utilidades HTTP

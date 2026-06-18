@@ -4,9 +4,10 @@ COPY package*.json ./
 RUN npm ci
 
 FROM deps AS build
-COPY tsconfig.json ./
+COPY tsconfig.json tsconfig.client.json ./
 COPY prisma ./prisma
 COPY src ./src
+COPY client ./client
 COPY public ./public
 RUN npx prisma generate
 RUN npm run build

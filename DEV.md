@@ -29,25 +29,31 @@ Guárdala en `.env` como `TOTP_ENCRYPTION_KEY_BASE64`. El archivo `.env`, las ba
 
 | Comando | Función |
 |---|---|
-| `npm run build` | Compila TypeScript en `dist/` |
+| `npm run build` | Compila backend y cliente TypeScript |
+| `npm run build:backend` | Compila únicamente el backend en `dist/` |
+| `npm run build:client` | Compila `client/app.ts` como `public/app.js` |
 | `npm start` | Ejecuta la compilación existente |
 | `npm run dev` | Mantiene el compilador TypeScript en modo observación |
+| `npm run dev:client` | Mantiene el cliente TypeScript en modo observación |
 | `npm test` | Ejecuta los tests de integración |
 | `npm run prisma:generate` | Regenera Prisma Client |
 | `npm run prisma:migrate` | Crea o aplica migraciones de desarrollo |
 | `npm run prisma:studio` | Abre el inspector de la base de datos |
 
-`npm run dev` no arranca el servidor por sí solo. Durante el desarrollo usa dos terminales:
+Los comandos de observación no arrancan el servidor. Durante el desarrollo del proyecto completo usa tres terminales:
 
 ```powershell
 # Terminal 1
 npm run dev
 
-# Terminal 2, después de la primera compilación
+# Terminal 2
+npm run dev:client
+
+# Terminal 3, después de la primera compilación
 npm start
 ```
 
-Reinicia la segunda terminal cuando cambie código del backend. Los archivos de `public/` se leen directamente y normalmente solo requieren recargar el navegador.
+Reinicia el servidor cuando cambie código del backend. Los cambios del cliente generan un nuevo `public/app.js` y requieren recargar el navegador.
 
 ## 3. Configuración
 
@@ -146,10 +152,13 @@ Constantes como tamaño del tablero, puntuación objetivo, frecuencia de actuali
 
 ## 7. Cliente
 
-La interfaz usa HTML, CSS y JavaScript nativos. Al cambiarla:
+La interfaz usa HTML, CSS y TypeScript sin framework frontend. Al cambiarla:
 
 - Mantén `public/index.html` accesible con teclado y controles táctiles.
-- Centraliza las peticiones HTTP en el helper `api` de `public/app.js`.
+- Modifica `client/app.ts`; `public/app.js` es un resultado generado.
+- Centraliza las peticiones HTTP en el helper tipado `api`.
+- Define contratos para respuestas HTTP, mensajes WebSocket y estado del juego.
+- Mantén en `client/three.d.ts` únicamente la superficie de Three.js utilizada por la aplicación.
 - Escapa contenido de usuarios antes de insertarlo como HTML.
 - Mantén la escena visual separada del estado autoritativo recibido.
 - Comprueba escritorio y móvil.
