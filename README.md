@@ -1,193 +1,137 @@
 # Transcendence Pong
 
-Aplicacion web para el proyecto ft_transcendence basada en Pong 3D, multijugador remoto, chat, perfiles y estadisticas.
+Aplicación web de Pong 3D con partidas multijugador en tiempo real, rival automático, chat, perfiles, estadísticas y autenticación segura.
 
-Backend unico modular para usuarios, autenticacion, sesiones, login OAuth 42, 2FA TOTP y autorizacion por rol.
+El proyecto se entrega como una aplicación única: Fastify sirve la API y el cliente web, WebSocket mantiene las partidas y el chat en tiempo real, Prisma persiste los datos en SQLite y Caddy publica el servicio mediante HTTPS cuando se ejecuta con Docker.
 
-## Stack elegido
+## Funcionalidades
 
-- Fastify para HTTP con poca magia y buen soporte de hooks.
-- TypeScript estricto para contratos claros entre modulos.
-- Prisma ORM para persistencia tipada.
-- SQLite como base de datos local por defecto.
-- Cookies con sesiones de servidor; no JWT como mecanismo principal.
-- `scrypt` de Node para passwords.
-- TOTP con secretos cifrados y recovery codes hasheados.
+- Pong 1 contra 1 con servidor autoritativo y representación 3D mediante Three.js.
+- Matchmaking entre usuarios conectados.
+- Rival automático si no aparece otro jugador, con cinco niveles de dificultad.
+- Chat de lobby, mensajes directos e invitaciones a partidas.
+- Perfiles con nombre visible, biografía y avatar PNG, JPG o GIF.
+- Amigos, solicitudes, presencia en línea y bloqueo de usuarios.
+- Historial de partidas, victorias, derrotas, puntuación y clasificación.
+- Registro y acceso con contraseña.
+- Acceso y vinculación de cuenta mediante OAuth 2.0 de 42.
+- Segundo factor TOTP y códigos de recuperación de un solo uso.
+- Sesiones de servidor mediante cookies HTTP-only.
+- Páginas de privacidad y condiciones de uso.
 
-## Modulos seleccionados para 14 puntos
+## Tecnologías
 
-- Gaming and user experience: complete web-based game (2 pts).
-- Gaming and user experience: remote players in real time (2 pts).
-- Gaming and user experience: advanced 3D graphics with Three.js (2 pts).
-- Web: real-time features with WebSockets (2 pts).
-- Web: user interaction with chat, profiles and friends (2 pts).
-- Web: ORM with Prisma (1 pt).
-- User Management: OAuth 2.0 with 42 (1 pt).
-- User Management: complete 2FA with TOTP and recovery codes (1 pt).
-- User Management: game statistics and match history (1 pt).
+- Node.js 24 y TypeScript.
+- Fastify 5 para HTTP y WebSocket.
+- Three.js para la escena del juego.
+- Prisma ORM 6 con SQLite.
+- Zod para validación de entrada y configuración.
+- `scrypt` para contraseñas y `otplib` para TOTP.
+- Docker Compose y Caddy para despliegue HTTPS local.
 
-Total: 14 puntos.
+## Inicio rápido con Docker
 
-## Modulos internos
+Requisitos:
 
-- `users`: identidad, perfil minimo, rol y estado.
-- `auth`: registro, login, challenges 2FA, reautenticacion y cambio de password.
-- `sessions`: sesiones opacas de servidor y cookie segura.
-- `two_factor`: TOTP, provisioning URI y recovery codes.
-- `oauth`: inicio de login OAuth 42, validacion de state, callback y gestion explicita de link/unlink de cuenta 42.
-- `authorization`: `requireAuth` y `requireRole`.
-- `live`: WebSocket autenticado, presencia online, matchmaking 1v1 y Pong autoritativo.
-- `matches`: historial de partidas, estadisticas y leaderboard.
-- `chat`: chat de lobby, mensajes directos y base para invitaciones.
+- Docker Desktop abierto y configurado para contenedores Linux.
+- Git.
 
-## Arranque local
+1. Crea el archivo de configuración:
 
-1. Instalar dependencias:
-
-```bash
-npm install
+```powershell
+Copy-Item .env.example .env
 ```
 
-2. Crear `.env` desde `.env.example`.
+2. Genera una clave de cifrado y copia el resultado en `TOTP_ENCRYPTION_KEY_BASE64` dentro de `.env`:
 
-3. Generar una clave para cifrar secretos TOTP:
-
-```bash
+```powershell
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-4. Preparar Prisma/SQLite:
+3. Construye y arranca los servicios:
 
-```bash
-npx prisma generate
-npx prisma migrate dev
+```powershell
+docker compose up --build
 ```
 
-5. Ejecutar:
+4. Abre [https://localhost:8443](https://localhost:8443).
 
-```bash
+Caddy utiliza un certificado local. El navegador puede pedir que confirmes la excepción de seguridad la primera vez. La base de datos se conserva en el volumen `app-data` aunque se reinicien los contenedores.
+
+Para detener la aplicación:
+
+```powershell
+docker compose down
+```
+
+No uses `docker compose down -v` salvo que quieras borrar también los datos persistidos.
+
+## Ejecución local sin Docker
+
+Requisitos: Node.js 24 y npm.
+
+```powershell
+Copy-Item .env.example .env
+npm install
+npm run prisma:generate
+npm run prisma:migrate
 npm run build
 npm start
 ```
 
-## Arranque con Docker y HTTPS
+La aplicación estará en [http://127.0.0.1:3000](http://127.0.0.1:3000). Para esta modalidad deja `COOKIE_SECURE=false` y usa en OAuth la URL de retorno HTTP local.
 
-Configura `.env` con una clave `TOTP_ENCRYPTION_KEY_BASE64` real y, si vas a usar OAuth, las credenciales de 42.
+## Configuración de OAuth 42
 
-```bash
-docker compose up --build
-```
-
-La app queda disponible en:
-
-```text
-https://localhost:8443/
-```
-
-Caddy actua como proxy HTTPS y la aplicacion Node queda aislada dentro de la red de Docker.
-
-## Base de datos
-
-El backend usa **Prisma ORM con SQLite**.
-
-Variable recomendada en `.env`:
+OAuth es opcional para arrancar, pero necesita una aplicación registrada en 42 para funcionar. Configura en `.env`:
 
 ```env
-DATABASE_URL="file:./dev.db"
+OAUTH_42_CLIENT_ID=tu_client_id
+OAUTH_42_CLIENT_SECRET=tu_client_secret
+OAUTH_42_REDIRECT_URI=https://localhost:8443/auth/oauth/42/callback
 ```
 
-Con `NODE_ENV=test`, la app usa repositorios en memoria para que los tests sean rapidos y aislados.
-
-## OAuth 42
-
-Configura estas variables en `.env` para habilitar login con 42:
+La URI debe coincidir exactamente con la configurada en la aplicación de 42. Para ejecución sin Docker utiliza:
 
 ```env
-OAUTH_42_CLIENT_ID=...
-OAUTH_42_CLIENT_SECRET=...
 OAUTH_42_REDIRECT_URI=http://127.0.0.1:3000/auth/oauth/42/callback
-OAUTH_42_AUTHORIZE_URL=https://api.intra.42.fr/oauth/authorize
-OAUTH_42_TOKEN_URL=https://api.intra.42.fr/oauth/token
-OAUTH_42_ME_URL=https://api.intra.42.fr/v2/me
 ```
 
-Flujo resumido:
+No subas `.env` ni credenciales al repositorio.
 
-1. `GET /auth/oauth/42` redirige a 42 con `state`.
-2. `GET /auth/oauth/42/callback` valida `state` y la cookie temporal del navegador, intercambia `code`, obtiene perfil y resuelve usuario local.
-3. Si el usuario local tiene 2FA activo, responde `requires_2fa`.
-4. Si el email ya pertenece a una cuenta local no enlazada, falla con conflicto en vez de enlazar automaticamente.
-5. Si no, crea sesion local con cookie.
+## Uso del juego
 
-Flujo de linking/unlinking:
+1. Registra una cuenta e inicia sesión.
+2. Selecciona la dificultad del bot.
+3. Pulsa `Find match`.
+4. Si hay otro usuario buscando, ambos entrarán en la misma partida. Si no, el bot entrará tras unos segundos.
+5. Mueve la pala con `W` y `S` o con los controles táctiles de la pantalla.
+6. Gana el primer jugador que alcance 5 puntos.
 
-1. `POST /auth/oauth/42/link/start` solo funciona con sesion autenticada y reautenticacion fuerte reciente.
-2. `GET /auth/oauth/42/link/callback` usa un `state` distinto (`purpose=link`) y enlaza la identidad 42 a la cuenta autenticada actual.
-3. Si esa identidad 42 ya pertenece a otro usuario, falla con `OAUTH_ALREADY_LINKED_TO_OTHER_USER`.
-4. `DELETE /auth/oauth/42/link` solo permite unlink si la cuenta conserva al menos un metodo de acceso viable.
+El resultado se guarda automáticamente y actualiza el historial, las estadísticas y la clasificación.
 
-## Estado actual
+## Verificación
 
-La app ya cubre usuarios, credenciales, sesiones, challenges 2FA, TOTP, recovery codes, estados OAuth, cuentas OAuth enlazadas, Pong remoto por WebSocket, presencia online, perfiles, amistades, bloqueo basico, historial de partidas, estadisticas, leaderboard y mensajes de chat de lobby. La persistencia real vive en Prisma/SQLite; los tests siguen usando repositorios en memoria.
+```powershell
+npm run build
+npm test
+```
 
-## Endpoints iniciales
+Los tests de integración usan repositorios en memoria y no modifican la base de datos local.
 
-- `GET /`
-- `GET /ui/app.css`
-- `GET /ui/app.js`
-- `GET /health`
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /auth/login/2fa`
-- `GET /auth/oauth/42`
-- `GET /auth/oauth/42/callback`
-- `POST /auth/oauth/42/link/start`
-- `GET /auth/oauth/42/link/callback`
-- `DELETE /auth/oauth/42/link`
-- `POST /auth/logout`
-- `POST /auth/reauthenticate`
-- `POST /auth/password/change`
-- `POST /2fa/setup`
-- `POST /2fa/confirm`
-- `POST /2fa/recovery-codes/regenerate`
-- `DELETE /2fa`
-- `GET /me`
-- `GET /admin/users`
-- `PATCH /me/profile`
-- `GET /users`
-- `GET /users/:userId/profile`
-- `POST /users/:userId/friends`
-- `POST /users/:userId/friends/accept`
-- `DELETE /users/:userId/friends`
-- `GET /me/friends`
-- `POST /users/:userId/block`
-- `DELETE /users/:userId/block`
-- `POST /matches`
-- `GET /users/:userId/matches`
-- `GET /users/:userId/stats`
-- `GET /leaderboard`
-- `POST /chat/messages`
-- `GET /chat/messages`
-- `POST /chat/direct/:userId/messages`
-- `GET /chat/direct/:userId/messages`
-- `GET /ws`
-- `GET /privacy`
-- `GET /terms`
-
-## UI manual de pruebas
-
-Con el backend arrancado, abre:
+## Estructura
 
 ```text
-http://127.0.0.1:3000/
+public/                 Cliente web y escena Three.js
+src/modules/            Dominios del backend
+src/ui/                 Rutas de archivos estáticos
+src/shared/             Criptografía, errores y utilidades HTTP
+src/db/                 Inicialización y mapeos de Prisma
+prisma/                 Esquema y migraciones de SQLite
+tests/integration/      Pruebas de integración
+Dockerfile              Imagen de la aplicación
+docker-compose.yml      Aplicación y proxy HTTPS
+Caddyfile               Configuración HTTPS
 ```
 
-La pantalla permite probar registro, login, logout, `/me`, reautenticacion, cambio de password, setup TOTP, confirmacion 2FA, login con segundo factor y recovery codes.
-
-## Notas de seguridad
-
-- Los tokens de sesion son opacos y se guardan hasheados.
-- Las cookies usan `httpOnly` y pueden configurarse como `secure`.
-- Los recovery codes se guardan hasheados.
-- Los secretos TOTP se cifran con una clave local.
-- OAuth 42 separa login de linking para evitar enlaces implicitos por email.
+La arquitectura completa, el modelo de datos y los flujos están en [DOCUMENTACION.md](DOCUMENTACION.md). Las normas para modificar y probar el código están en [DEV.md](DEV.md).

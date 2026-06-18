@@ -1,232 +1,213 @@
-# Developer Guide
+# Guía de desarrollo
 
-## Purpose
+## 1. Entorno
 
-This backend is a modular monolith for a Transcendence-style project. It focuses on users, password authentication, OAuth 42 login, server-side sessions, optional TOTP 2FA, recovery codes and simple role-based authorization.
+Versiones de referencia:
 
-The project intentionally avoids JWT as the main auth mechanism, microservices, CQRS, event sourcing and advanced ACLs. It keeps the auth surface narrow: local password login, OAuth 42, local sessions and local TOTP.
+- Node.js 24.
+- npm incluido con Node.
+- Docker Desktop con motor Linux, si se usa Docker.
 
-## Stack
+Instalación local:
 
-- Node.js + TypeScript.
-- Fastify for HTTP.
-- Prisma ORM for persistence.
-- SQLite as the default local database.
-- `zod` for request validation.
-- Node `scrypt` for password hashing.
-- `otplib` for TOTP.
-- Server-side sessions with secure cookies.
-
-The project uses in-memory repositories when `NODE_ENV=test`. This keeps tests fast and isolated.
-
-## Module Boundaries
-
-The code is split by backend domain, not by technical layer alone.
-
-```text
-src/modules/
-  users/
-  auth/
-  sessions/
-  two_factor/
-  oauth/
-  authorization/
+```powershell
+Copy-Item .env.example .env
+npm install
+npm run prisma:generate
+npm run prisma:migrate
 ```
 
-### `users`
-
-Owns user identity and profile-like data: username, email, display name, role and status.
-
-### `auth`
-
-Owns registration, login, 2FA login challenges, reauthentication and password changes. It orchestrates `users`, `sessions` and `two_factor`.
-
-### `sessions`
-
-Owns server-side sessions. The browser receives only an opaque cookie. The database stores only a hash of that token.
-
-### `two_factor`
-
-Owns TOTP setup, TOTP verification and recovery codes.
-
-### `oauth`
-
-Owns OAuth 42 login plus explicit link/unlink flows. Login and linking use separate state purposes.
-
-## Persistence
-
-Persistence uses Prisma ORM with SQLite.
-
-Main files:
-
-```text
-prisma/schema.prisma
-src/db/prisma.ts
-src/db/prismaMappers.ts
-src/modules/*/*.prismaRepository.ts
-```
-
-Manual SQL should not be added to application code. Schema changes should go through `prisma/schema.prisma` and Prisma migrations.
-
-The current Prisma schema covers:
-
-```text
-users
-password_credentials
-sessions
-login_challenges
-two_factor_totp
-recovery_codes
-oauth_states
-oauth_accounts
-matches
-match_players
-chat_messages
-```
-
-Future game-state, tournament and friend/block models should be added to Prisma instead of handwritten SQL. Live game state should stay in memory/WebSocket; SQLite stores durable results, history and chat messages.
-
-## Environment
-
-Create `.env` from `.env.example`.
-
-Required:
-
-```env
-DATABASE_URL="file:./dev.db"
-TOTP_ENCRYPTION_KEY_BASE64=...
-```
-
-Generate the TOTP key with:
+Genera una clave de desarrollo para TOTP:
 
 ```powershell
 node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
 ```
 
-For OAuth 42:
+Guárdala en `.env` como `TOTP_ENCRYPTION_KEY_BASE64`. El archivo `.env`, las bases SQLite, `dist/` y `node_modules/` están ignorados por Git.
 
-```env
-OAUTH_42_CLIENT_ID=...
-OAUTH_42_CLIENT_SECRET=...
-OAUTH_42_REDIRECT_URI=http://127.0.0.1:3000/auth/oauth/42/callback
-OAUTH_42_AUTHORIZE_URL=https://api.intra.42.fr/oauth/authorize
-OAUTH_42_TOKEN_URL=https://api.intra.42.fr/oauth/token
-OAUTH_42_ME_URL=https://api.intra.42.fr/v2/me
-```
+## 2. Comandos
 
-## Running Locally
+| Comando | Función |
+|---|---|
+| `npm run build` | Compila TypeScript en `dist/` |
+| `npm start` | Ejecuta la compilación existente |
+| `npm run dev` | Mantiene el compilador TypeScript en modo observación |
+| `npm test` | Ejecuta los tests de integración |
+| `npm run prisma:generate` | Regenera Prisma Client |
+| `npm run prisma:migrate` | Crea o aplica migraciones de desarrollo |
+| `npm run prisma:studio` | Abre el inspector de la base de datos |
 
-Install dependencies:
-
-```powershell
-npm install
-```
-
-Generate Prisma Client and apply migrations:
+`npm run dev` no arranca el servidor por sí solo. Durante el desarrollo usa dos terminales:
 
 ```powershell
-npx prisma generate
-npx prisma migrate dev
-```
+# Terminal 1
+npm run dev
 
-Compile:
-
-```powershell
-node .\node_modules\typescript\bin\tsc -p tsconfig.json
-```
-
-Start:
-
-```powershell
+# Terminal 2, después de la primera compilación
 npm start
 ```
 
-Health check:
+Reinicia la segunda terminal cuando cambie código del backend. Los archivos de `public/` se leen directamente y normalmente solo requieren recargar el navegador.
 
-```powershell
-curl.exe http://127.0.0.1:3000/health
-```
+## 3. Configuración
 
-Manual UI:
+Variables reconocidas:
+
+| Variable | Uso |
+|---|---|
+| `NODE_ENV` | `development`, `test` o `production` |
+| `HOST`, `PORT` | Dirección y puerto de Fastify |
+| `COOKIE_SECURE` | Obliga a enviar la cookie solo por HTTPS |
+| `SESSION_COOKIE_NAME` | Nombre de la cookie de sesión |
+| `SESSION_TTL_DAYS` | Duración de la sesión |
+| `TOTP_ISSUER` | Nombre mostrado por la aplicación autenticadora |
+| `TOTP_ENCRYPTION_KEY_BASE64` | Clave obligatoria para cifrar secretos TOTP |
+| `DATABASE_URL` | URL de SQLite; sin ella se usan repositorios en memoria |
+| `OAUTH_42_CLIENT_ID` | Identificador de la aplicación de 42 |
+| `OAUTH_42_CLIENT_SECRET` | Secreto de la aplicación de 42 |
+| `OAUTH_42_REDIRECT_URI` | Callback autorizado en 42 |
+| `OAUTH_42_AUTHORIZE_URL` | Endpoint de autorización de 42 |
+| `OAUTH_42_TOKEN_URL` | Endpoint de token de 42 |
+| `OAUTH_42_ME_URL` | Endpoint de perfil de 42 |
+
+La clave TOTP debe ser estable. Cambiarla hace ilegibles los secretos TOTP ya almacenados.
+
+## 4. Organización del código
+
+Cada dominio de `src/modules/` sigue, cuando lo necesita, esta separación:
+
+- `*.routes.ts`: protocolo HTTP, validación y códigos de respuesta.
+- `*.service.ts`: reglas y coordinación de negocio.
+- `*.repository.ts`: contrato e implementación en memoria.
+- `*.prismaRepository.ts`: persistencia real con Prisma.
+- `*.types.ts`: tipos del dominio.
+
+Dependencias principales:
 
 ```text
-http://127.0.0.1:3000/
+routes -> services -> repositories
+                    -> other domain services when orchestration is required
 ```
 
-## Testing
+`src/app.ts` es la raíz de composición: crea repositorios, servicios, plugins y rutas. `src/server.ts` solo construye la aplicación y abre el puerto.
 
-Run:
+Normas de diseño:
+
+- Mantén la lógica de negocio fuera de las rutas.
+- Valida toda entrada externa con Zod.
+- No expongas hashes, secretos ni tokens en respuestas JSON.
+- No crees una sesión antes de completar el segundo factor.
+- No guardes el estado de cada frame en SQLite.
+- Añade persistencia mediante Prisma, no mediante SQL incrustado en rutas.
+- Conserva implementaciones en memoria para que los tests permanezcan aislados.
+
+## 5. Base de datos y migraciones
+
+Para cambiar el esquema:
+
+1. Edita `prisma/schema.prisma`.
+2. Crea y aplica una migración con un nombre descriptivo:
 
 ```powershell
-node .\node_modules\typescript\bin\tsc -p tsconfig.json
-node --test tests\integration\*.test.mjs
+npx prisma migrate dev --name nombre_del_cambio
 ```
 
-The tests run with `NODE_ENV=test`, so they use in-memory repositories and do not require a SQLite file.
-
-Current integration coverage includes:
-
-- register
-- login
-- authenticated `/me`
-- logout
-- invalid credentials
-- protected route without cookie
-- admin route forbidden for normal user
-- TOTP setup
-- TOTP login
-- recovery code login
-- recovery code one-use behavior
-- OAuth 42 login state validation
-- OAuth 42 account creation
-- OAuth 42 explicit link/unlink behavior
-
-## Prisma Inspection
-
-Open Prisma Studio:
+3. Regenera el cliente y compila:
 
 ```powershell
-npx prisma studio
+npm run prisma:generate
+npm run build
 ```
 
-Reset local development database if needed:
+4. Revisa el SQL creado en `prisma/migrations/` y ejecuta los tests.
+
+En Docker, `docker-entrypoint.sh` ejecuta `prisma migrate deploy` antes de iniciar Node. No edites una migración que ya se haya compartido o aplicado; crea otra.
+
+Para inspeccionar datos:
 
 ```powershell
-npx prisma migrate reset
+npm run prisma:studio
 ```
 
-Do not commit generated SQLite database files.
+`npx prisma migrate reset` elimina la base local. Úsalo únicamente cuando esos datos puedan perderse.
 
-## Adding New Features
+## 6. WebSocket y juego
 
-Follow these rules:
+`LiveHub` es responsable del estado efímero. Al añadir mensajes:
 
-- Keep profile data in `users`.
-- Keep login/password/session orchestration in `auth`.
-- Keep cookie and session lifecycle in `sessions`.
-- Keep TOTP/recovery internals in `two_factor`.
-- Keep route access rules in `authorization`.
-- Add persistent models through Prisma.
+- Usa el formato `{ "type": "...", "payload": { ... } }`.
+- Autentica siempre mediante la sesión existente.
+- Trata los datos del cliente como intención, no como estado fiable.
+- Limita y valida cadenas, identificadores y valores numéricos.
+- Limpia temporizadores, colas y mapas al terminar una partida o cerrar una conexión.
+- Persiste el resultado una sola vez desde el servidor.
 
-Do not put password hashes in `users`.
-Do not create sessions before 2FA is complete.
-Do not return session tokens in JSON.
-Do not store recovery codes in plain text.
-Do not add JWT unless there is a concrete reason.
+Constantes como tamaño del tablero, puntuación objetivo, frecuencia de actualización y dificultad del bot están en `src/modules/live/live.routes.ts`.
 
-## Known Limitations
+## 7. Cliente
 
-- No email verification.
-- No password reset flow.
-- No account lockout policy beyond simple in-memory rate limiting.
-- No CSRF token layer yet.
-- No admin UI.
-- Match history and lobby chat now have Prisma models and repositories. No live game-state, tournament or friend/block models yet.
+La interfaz usa HTML, CSS y JavaScript nativos. Al cambiarla:
 
-These are acceptable for the current base. The next most useful backend improvements would be:
+- Mantén `public/index.html` accesible con teclado y controles táctiles.
+- Centraliza las peticiones HTTP en el helper `api` de `public/app.js`.
+- Escapa contenido de usuarios antes de insertarlo como HTML.
+- Mantén la escena visual separada del estado autoritativo recibido.
+- Comprueba escritorio y móvil.
+- No introduzcas dependencias desde CDN; el despliegue debe ser autocontenido.
 
-1. Add WebSocket game loop with live state in memory.
-2. Add WebSocket authentication using the existing session cookie.
-3. Add CSRF protection if the frontend is cookie-based and browser-facing.
-4. Add password reset.
-5. Add email verification.
+Los avatares admitidos son PNG, JPEG y GIF, con un máximo de 256 KB en el cliente. El backend también acepta una URL válida por compatibilidad.
+
+## 8. Tests
+
+Ejecuta siempre:
+
+```powershell
+npm run build
+npm test
+```
+
+Los tests establecen `NODE_ENV=test`, por lo que `buildApp()` usa repositorios en memoria. No necesitan SQLite ni credenciales reales de 42; el flujo OAuth simula las respuestas externas.
+
+Cobertura actual:
+
+- Registro, login, logout y protección de rutas.
+- TOTP, códigos de recuperación y reautenticación.
+- Cambio de contraseña y revocación de sesiones.
+- Inicio, callback, vinculación y desvinculación de OAuth 42.
+- Partidas, historial y validación de resultados.
+- Chat de lobby y validación de mensajes.
+- Entrega del cliente web y páginas legales.
+
+Cuando añadas comportamiento persistente, prueba el servicio y la ruta. Cuando modifiques WebSocket o la física, añade pruebas específicas: la cobertura actual se concentra principalmente en HTTP.
+
+## 9. Comprobación con Docker
+
+Antes de entregar:
+
+```powershell
+docker compose build --no-cache
+docker compose up
+```
+
+Comprueba:
+
+- `https://localhost:8443/` carga sin recursos 404.
+- Registro, login y logout funcionan.
+- Dos navegadores pueden emparejarse.
+- Sin segundo jugador aparece el bot.
+- Chat, perfiles y estadísticas se actualizan.
+- La base conserva los datos tras `docker compose down` y un nuevo arranque.
+- Los logs no muestran reinicios continuos del contenedor.
+
+Si aparece `dockerDesktopLinuxEngine` no encontrado, Docker Desktop no está abierto o no está usando contenedores Linux. Si la aplicación reinicia por una variable vacía, revisa `.env`, especialmente `TOTP_ENCRYPTION_KEY_BASE64`.
+
+## 10. Criterio de finalización
+
+Un cambio se considera terminado cuando:
+
+- Compila sin errores.
+- Los tests existentes pasan y el cambio tiene cobertura proporcional a su riesgo.
+- Las migraciones necesarias están incluidas.
+- No se han añadido secretos ni bases de datos al repositorio.
+- La documentación refleja cualquier cambio de configuración, API o comportamiento visible.
+- El flujo afectado se ha probado en el navegador cuando corresponde.

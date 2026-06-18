@@ -1,386 +1,213 @@
-# Documentación del Proyecto Transcendence Backend
+# Documentación técnica de Transcendence
 
-## 1. Introducción
+## 1. Objetivo
 
-Este backend es una base modular para el proyecto **Transcendence**. Actualmente cubre autenticación local, sesiones seguras, OAuth 42, 2FA TOTP, recovery codes y autorización básica por rol.
+Transcendence es una aplicación web de Pong que integra juego 3D, partidas remotas, comunicación en tiempo real, gestión social, estadísticas y autenticación avanzada.
 
-La prioridad de esta versión es mantener una arquitectura sencilla y rápida de extender para el resto del proyecto: juego, partidas, estadísticas, torneos, amistades/bloqueos y chat.
+La solución utiliza un monolito modular. Hay un único proceso de aplicación, pero cada dominio mantiene separadas sus rutas, servicios, tipos y repositorios. Este diseño reduce la complejidad operativa sin mezclar responsabilidades.
 
-## 2. Tecnologías principales
+## 2. Selección de módulos: 14 puntos
 
-- **Runtime:** Node.js.
-- **Lenguaje:** TypeScript.
-- **Framework HTTP:** Fastify.
-- **Base de datos:** SQLite.
-- **ORM:** Prisma.
-- **Validación:** Zod.
-- **Autenticación:** sesiones opacas de servidor mediante cookies HTTP-only.
-- **Hash de contraseñas:** `scrypt` de Node.js.
-- **2FA:** TOTP con `otplib`.
+La implementación se ha orientado a la siguiente combinación del enunciado:
 
-La decisión importante es esta: **la persistencia real usa Prisma + SQLite**. Ya no se usa PostgreSQL manual ni `pg`.
+| Área | Módulo | Puntos | Evidencia en el proyecto |
+|---|---|---:|---|
+| Gaming y UX | Juego web completo | 2 | Reglas, marcador, victoria a 5 puntos, controles y flujo completo de partida |
+| Gaming y UX | Jugadores remotos en tiempo real | 2 | Matchmaking 1v1 y estado autoritativo por WebSocket |
+| Gaming y UX | Gráficos 3D avanzados | 2 | Escena, cámara, iluminación y objetos con Three.js |
+| Web | Funcionalidad en tiempo real | 2 | WebSocket para juego, presencia, chat e invitaciones |
+| Web | Interacción social | 2 | Chat, perfiles, amigos, bloqueos y presencia |
+| Web | ORM | 1 | Prisma ORM y migraciones sobre SQLite |
+| Gestión de usuarios | OAuth 2.0 | 1 | Login, vinculación y desvinculación segura con 42 |
+| Gestión de usuarios | 2FA | 1 | TOTP cifrado y códigos de recuperación |
+| Gestión de usuarios | Estadísticas | 1 | Historial, victorias, derrotas y leaderboard |
+| | **Total** | **14** | |
 
----
+La valoración definitiva corresponde al evaluador y a la versión exacta del enunciado utilizada en la entrega. La tabla identifica la intención y la evidencia técnica disponible.
 
-## 3. Conceptos básicos de TypeScript
-
-TypeScript es JavaScript con tipos estáticos. Permite detectar errores antes de ejecutar el programa.
-
-Ejemplo simple:
-
-```ts
-let edad: number = 25;
-edad = "veinticinco"; // Error: string no es number
-```
-
-### Interfaces
-
-Una interfaz define la forma esperada de un objeto:
-
-```ts
-interface Usuario {
-  id: string;
-  username: string;
-  email: string | null;
-  role: 'user' | 'admin';
-}
-```
-
-Si falta un campo obligatorio o se usa un tipo incorrecto, TypeScript avisa al compilar.
-
-### Tipos literales
-
-El proyecto usa tipos estrictos para limitar valores posibles:
-
-```ts
-type UserRole = 'user' | 'admin';
-type UserStatus = 'active' | 'disabled';
-```
-
-Esto evita estados ambiguos dentro del backend.
-
----
-
-## 4. Arquitectura actual
-
-El proyecto es un **monolito modular**: una sola aplicación Fastify dividida por dominios.
+## 3. Arquitectura
 
 ```text
-src/
-├── app.ts
-├── server.ts
-├── config/
-├── db/
-│   ├── prisma.ts
-│   └── prismaMappers.ts
-├── modules/
-│   ├── users/
-│   ├── auth/
-│   ├── sessions/
-│   ├── two_factor/
-│   ├── oauth/
-│   └── authorization/
-├── shared/
-└── ui/
+Navegador
+  |-- HTTPS / HTTP API --------> Fastify routes
+  |                                |-- servicios de dominio
+  |                                `-- repositorios Prisma
+  |
+  `-- WebSocket /ws -----------> LiveHub
+                                   |-- matchmaking
+                                   |-- bucle autoritativo de Pong
+                                   |-- presencia y chat
+                                   `-- persistencia del resultado
 
-prisma/
-├── schema.prisma
-└── migrations/
+Fastify + LiveHub -------------> Prisma ORM -------------> SQLite
+        |
+        `----------------------> archivos estáticos y Three.js
 ```
 
-### Flujo general de una petición
+En Docker, Caddy recibe HTTPS en el puerto `8443` y reenvía las peticiones al contenedor de Node en el puerto `3000`. Node no se publica directamente al host.
 
-1. El cliente envía una petición HTTP a Fastify.
-2. La ruta valida los datos con Zod cuando corresponde.
-3. El servicio de dominio ejecuta la lógica de negocio.
-4. El repositorio lee o escribe datos usando Prisma.
-5. Fastify responde con JSON y código HTTP adecuado.
-
----
-
-## 5. Módulos principales
+## 4. Dominios del backend
 
 ### `users`
 
-Gestiona identidad y perfil mínimo:
-
-- `id`
-- `username`
-- `email`
-- `displayName`
-- `role`
-- `status`
-
-No guarda contraseñas ni sesiones.
+Gestiona identidad y perfil público, avatar, biografía, roles, estado, amistades y bloqueos. También calcula la presencia con la información proporcionada por `LiveHub`.
 
 ### `auth`
 
-Gestiona:
-
-- registro,
-- login,
-- challenges de login con 2FA,
-- reautenticación,
-- cambio de contraseña.
-
-Las contraseñas se guardan hasheadas con `scrypt`, nunca en texto plano.
+Coordina registro, login, segundo factor, reautenticación y cambio de contraseña. Las contraseñas se procesan con `scrypt` y nunca se almacenan en texto claro.
 
 ### `sessions`
 
-Gestiona sesiones opacas de servidor:
-
-- crea sesiones,
-- busca sesiones por hash de token,
-- revoca sesiones,
-- marca sesiones como reautenticadas.
-
-El navegador solo recibe una cookie. La base de datos guarda un hash del token, no el token en claro.
+Crea y revoca sesiones de servidor. El navegador recibe un token opaco en una cookie HTTP-only; la persistencia contiene únicamente el hash del token.
 
 ### `two_factor`
 
-Gestiona:
-
-- setup TOTP,
-- confirmación TOTP,
-- recovery codes,
-- uso único de recovery codes,
-- desactivación de 2FA.
-
-Los secretos TOTP se cifran antes de guardarse.
+Implementa el alta, confirmación y desactivación de TOTP. El secreto TOTP se cifra con `TOTP_ENCRYPTION_KEY_BASE64`. Los códigos de recuperación se almacenan mediante hash y solo pueden utilizarse una vez.
 
 ### `oauth`
 
-Gestiona OAuth 42:
-
-- inicio de login OAuth,
-- validación de `state`,
-- callback,
-- creación o resolución de usuario local,
-- linking explícito de cuenta 42,
-- unlink seguro.
-
-El login y el linking usan estados separados para evitar mezclar flujos.
+Implementa OAuth 2.0 con 42 para login y para vinculación explícita de cuentas. Ambos flujos utilizan estados distintos, caducidad y una cookie temporal del navegador. No se enlazan cuentas automáticamente por coincidencia de correo.
 
 ### `authorization`
 
-Contiene helpers como:
+Contiene los controles comunes de sesión y rol. Las rutas privadas usan `requireAuth`; las administrativas añaden `requireRole`.
 
-- `requireAuth`,
-- `requireRole`,
-- obtención del usuario actual.
+### `live`
 
----
+Mantiene las conexiones WebSocket, usuarios en línea, cola de matchmaking y partidas activas. El servidor calcula movimiento, colisiones, goles y resultado; el cliente solo envía la intención de movimiento y representa los estados recibidos.
 
-## 6. Base de datos con Prisma + SQLite
+Si no aparece un rival humano en 2,5 segundos, se crea o reutiliza el usuario `pongbot`. Los cinco niveles alteran velocidad, error, zona muerta y tiempo de reacción del bot.
 
-La base de datos está definida en:
+Una desconexión pausa la partida. El jugador dispone de 15 segundos para volver; después pierde por abandono.
 
-```text
-prisma/schema.prisma
-```
+### `matches`
+
+Persiste partidas terminadas y ofrece historial por usuario, estadísticas agregadas y clasificación.
+
+### `chat`
+
+Persiste mensajes del lobby y conversaciones directas. El WebSocket distribuye mensajes e indicadores de escritura en tiempo real.
+
+## 5. Cliente web
+
+El cliente está en `public/` y no requiere un framework de interfaz:
+
+- `index.html`: estructura de autenticación, juego, chat, estadísticas y modales.
+- `app.css`: diseño adaptable para escritorio y móvil.
+- `app.js`: estado de interfaz, llamadas HTTP, WebSocket y escena Three.js.
+
+Three.js se sirve desde la dependencia instalada. El navegador no necesita descargar la librería desde un CDN.
+
+La escena 3D representa el estado calculado por el servidor. Los controles de teclado y táctiles envían mensajes `game:input`; no deciden la posición final de la pelota ni el resultado.
+
+## 6. Flujo de una partida
+
+1. El cliente autenticado abre `/ws` usando su cookie de sesión.
+2. `LiveHub` valida la sesión y comunica presencia y estado actual.
+3. El usuario envía `queue:join` con una dificultad de bot entre 1 y 5.
+4. El servidor empareja dos usuarios o activa el rival automático.
+5. El servidor ejecuta el juego aproximadamente cada 33 ms.
+6. Los clientes envían entradas y reciben instantáneas `game:state`.
+7. Al llegar a 5 puntos, el servidor guarda la partida y emite `game:finished`.
+8. El cliente refresca estadísticas, historial y leaderboard.
+
+Mensajes principales enviados por el cliente:
+
+- `queue:join`, `queue:leave`.
+- `game:input`.
+- `chat:send`, `chat:typing`, `chat:invite`.
+
+Eventos principales enviados por el servidor:
+
+- `session:ready`, `presence:update`, `queue:update`.
+- `game:start`, `game:state`, `game:pause`, `game:resume`, `game:finished`.
+- `chat:message`, `chat:typing`, `chat:invite`.
+
+## 7. Autenticación y seguridad
+
+### Login local
+
+1. Se valida usuario y contraseña.
+2. Si 2FA está desactivado, se crea la sesión.
+3. Si 2FA está activo, se entrega un challenge con cinco minutos de validez.
+4. La sesión solo se crea al validar TOTP o un código de recuperación.
+
+### Acciones sensibles
+
+Cambiar la contraseña, configurar 2FA o modificar la vinculación con 42 requiere una reautenticación reciente. Esa autorización reforzada dura diez minutos. Tras cambiar contraseña o desactivar 2FA se revocan las demás sesiones del usuario.
+
+### OAuth 42
+
+El estado OAuth dura diez minutos y debe coincidir con la cookie temporal iniciada en el mismo navegador. Los estados son de un solo uso y diferencian login de vinculación. Una cuenta de 42 no puede pertenecer a dos usuarios locales.
+
+### Medidas implementadas
+
+- Cookies de sesión HTTP-only, `SameSite=Lax` y `Secure` en producción.
+- Tokens opacos y hashes de sesión en base de datos.
+- Contraseñas con `scrypt`.
+- Secretos TOTP cifrados.
+- Códigos de recuperación hasheados y de un solo uso.
+- Validación de entrada con Zod.
+- Reautenticación para operaciones críticas.
+- Separación entre identidad, credenciales y sesiones.
+
+## 8. Persistencia
+
+Prisma define el esquema en `prisma/schema.prisma`. SQLite funciona con modo WAL y un `busy_timeout` de cinco segundos para mejorar la concurrencia.
 
 Modelos actuales:
 
-- `User`
-- `PasswordCredential`
-- `Session`
-- `LoginChallenge`
-- `TwoFactorTotp`
-- `RecoveryCode`
-- `OAuthAccount`
-- `OAuthState`
-- `Match`
-- `MatchPlayer`
-- `ChatMessage`
+- `User`, `PasswordCredential`, `Session` y `LoginChallenge`.
+- `TwoFactorTotp` y `RecoveryCode`.
+- `OAuthAccount` y `OAuthState`.
+- `Match` y `MatchPlayer`.
+- `ChatMessage`.
+- `Friendship` y `UserBlock`.
 
-SQLite se configura con WAL y `busy_timeout` al arrancar Prisma para mejorar la convivencia entre lecturas y escrituras. La base se configura con:
+El estado activo del juego no se guarda en SQLite. Permanece en memoria porque cambia varias veces por segundo; únicamente se persiste el resultado final.
 
-```env
-DATABASE_URL="file:./dev.db"
-```
+## 9. API HTTP
 
-Los cambios de esquema se hacen modificando `prisma/schema.prisma` y creando migraciones Prisma.
+Todas las rutas sociales, de chat, partidas y seguridad requieren sesión salvo que se indique lo contrario.
 
-Comandos útiles:
+### Públicas
 
-```bash
-npx prisma generate
-npx prisma migrate dev
-npx prisma studio
-```
+- `GET /`, `GET /health`, `GET /privacy`, `GET /terms`.
+- `POST /auth/register`, `POST /auth/login`, `POST /auth/login/2fa`.
+- `GET /auth/oauth/42`, `GET /auth/oauth/42/callback`.
 
-Los archivos `.db` generados localmente no deben subirse al repositorio.
+### Cuenta y seguridad
 
----
+- `POST /auth/logout`, `POST /auth/reauthenticate`, `POST /auth/password/change`.
+- `POST /2fa/setup`, `POST /2fa/confirm`.
+- `POST /2fa/recovery-codes/regenerate`, `DELETE /2fa`.
+- `POST /auth/oauth/42/link/start`, `GET /auth/oauth/42/link/callback`.
+- `DELETE /auth/oauth/42/link`.
 
-## 7. Diagramas de flujo
+### Usuarios y relaciones
 
-### Registro de usuario
+- `GET /me`, `PATCH /me/profile`, `GET /users`.
+- `GET /users/:userId/profile`, `GET /me/friends`.
+- `POST /users/:userId/friends`, `POST /users/:userId/friends/accept`.
+- `DELETE /users/:userId/friends`.
+- `POST /users/:userId/block`, `DELETE /users/:userId/block`.
+- `GET /admin/users`, restringida a administradores.
 
-```mermaid
-graph TD
-    A[Cliente: POST /auth/register] --> B[Fastify route]
-    B --> C{Validar body}
-    C -->|Inválido| D[400 Bad Request]
-    C -->|Válido| E[AuthService]
-    E --> F[Hash password con scrypt]
-    F --> G[PrismaUsersRepository crea User]
-    G --> H[PrismaAuthRepository crea PasswordCredential]
-    H --> I[SessionsService crea sesión]
-    I --> J[Set-Cookie HTTP-only]
-    J --> K[200 OK]
-```
+### Partidas y chat
 
-### Login con 2FA opcional
+- `POST /matches`, `GET /users/:userId/matches`.
+- `GET /users/:userId/stats`, `GET /leaderboard`.
+- `POST /chat/messages`, `GET /chat/messages`.
+- `POST /chat/direct/:userId/messages`, `GET /chat/direct/:userId/messages`.
+- `GET /ws`, actualización bidireccional mediante WebSocket.
 
-```mermaid
-sequenceDiagram
-    participant U as Usuario
-    participant API as Fastify API
-    participant Auth as AuthService
-    participant DB as Prisma/SQLite
+## 10. Límites actuales
 
-    U->>API: POST /auth/login
-    API->>Auth: validar credenciales
-    Auth->>DB: buscar usuario y password credential
-    DB-->>Auth: datos de auth
-    Auth->>Auth: verificar password
-    alt Usuario sin 2FA
-        Auth->>DB: crear sesión
-        API-->>U: 200 OK + cookie
-    else Usuario con 2FA
-        Auth->>DB: crear login challenge
-        API-->>U: requires_2fa
-    end
-```
+- No hay torneo ni modo para más de dos jugadores simultáneos.
+- Las partidas activas no sobreviven al reinicio del proceso.
+- No hay verificación de correo ni recuperación de contraseña por correo.
+- El rate limiting existente es local al proceso y no sustituye una protección distribuida.
+- Los avatares se almacenan como data URL en SQLite; el cliente limita la subida a 256 KB.
+- El certificado de Caddy es local y no equivale a un certificado público de producción.
 
-### Cambio de contraseña con reautenticación
-
-```mermaid
-sequenceDiagram
-    participant U as Usuario
-    participant API as Fastify API
-    participant DB as Prisma/SQLite
-
-    U->>API: POST /auth/reauthenticate
-    API->>DB: verificar credenciales
-    DB-->>API: usuario válido
-    API->>DB: marcar sesión como reautenticada
-    API-->>U: 200 OK
-
-    U->>API: POST /auth/password/change
-    API->>API: comprobar reautenticación reciente
-    alt No reautenticado
-        API-->>U: 401 Unauthorized
-    else Reautenticado
-        API->>DB: actualizar password credential
-        API->>DB: revocar otras sesiones
-        API-->>U: 200 OK
-    end
-```
-
----
-
-## 8. Endpoints principales
-
-- `GET /`
-- `GET /health`
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /auth/login/2fa`
-- `POST /auth/logout`
-- `POST /auth/reauthenticate`
-- `POST /auth/password/change`
-- `GET /auth/oauth/42`
-- `GET /auth/oauth/42/callback`
-- `POST /auth/oauth/42/link/start`
-- `GET /auth/oauth/42/link/callback`
-- `DELETE /auth/oauth/42/link`
-- `POST /2fa/setup`
-- `POST /2fa/confirm`
-- `POST /2fa/recovery-codes/regenerate`
-- `DELETE /2fa`
-- `GET /me`
-- `GET /admin/users`
-- `POST /matches`
-- `GET /users/:userId/matches`
-- `POST /chat/messages`
-- `GET /chat/messages`
-
----
-
-## 9. Instalación y ejecución
-
-Instalar dependencias:
-
-```bash
-npm install
-```
-
-Crear `.env` desde `.env.example`.
-
-Generar clave TOTP:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
-```
-
-Preparar Prisma:
-
-```bash
-npx prisma generate
-npx prisma migrate dev
-```
-
-Compilar:
-
-```bash
-npm run build
-```
-
-Arrancar:
-
-```bash
-npm start
-```
-
-Ejecutar tests:
-
-```bash
-npm test
-```
-
-Los tests usan repositorios en memoria con `NODE_ENV=test`, así que no necesitan SQLite real.
-
----
-
-## 10. Seguridad implementada
-
-- Cookies HTTP-only para sesiones.
-- Tokens de sesión opacos.
-- Hash del token en base de datos, no token en claro.
-- Hash de contraseñas con `scrypt`.
-- Secretos TOTP cifrados.
-- Recovery codes hasheados y de un solo uso.
-- Separación explícita entre login OAuth y linking OAuth.
-- Reautenticación para acciones sensibles.
-- Revocación de otras sesiones tras cambios sensibles.
-
----
-
-## 11. Próximos pasos naturales
-
-Después de esta base, lo más útil es:
-
-1. añadir WebSocket para el estado vivo del juego en memoria,
-2. persistir solo resultados/eventos duraderos en SQLite,
-3. añadir estadísticas de usuario,
-4. torneos,
-5. amistades/bloqueos,
-6. autenticación de WebSocket leyendo la sesión/cookie existente.
-
-No conviene rehacer auth con JWT salvo que aparezca una razón concreta. Para este proyecto, las sesiones actuales ya encajan bien.
-
----
-
-Última actualización: 2026-06-15.
+Para instalar, ejecutar y probar la aplicación consulta [README.md](README.md). Para modificar el código consulta [DEV.md](DEV.md).
