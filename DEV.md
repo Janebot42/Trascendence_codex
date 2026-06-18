@@ -185,9 +185,10 @@ Cobertura actual:
 - Inicio, callback, vinculación y desvinculación de OAuth 42.
 - Partidas, historial y validación de resultados.
 - Chat de lobby y validación de mensajes.
+- Dos sesiones WebSocket simultáneas, chat en vivo, invitaciones, matchmaking y controles de partida.
 - Entrega del cliente web y páginas legales.
 
-Cuando añadas comportamiento persistente, prueba el servicio y la ruta. Cuando modifiques WebSocket o la física, añade pruebas específicas: la cobertura actual se concentra principalmente en HTTP.
+Cuando añadas comportamiento persistente, prueba el servicio y la ruta. Cuando modifiques el protocolo WebSocket o la física, amplía `live-multiplayer.test.mjs` con el nuevo comportamiento.
 
 ## 9. Comprobación con Docker
 

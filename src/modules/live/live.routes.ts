@@ -75,6 +75,9 @@ export class LiveHub {
 
   async register(app: FastifyInstance): Promise<void> {
     await app.register(websocket);
+    app.addHook('onClose', async () => {
+      this.shutdown();
+    });
 
     app.get('/ws', { websocket: true }, async (socket: LiveSocket, request: FastifyRequest) => {
       const user = await this.authenticate(request);
@@ -98,6 +101,20 @@ export class LiveHub {
         this.removeSocket(user.id, socket);
       });
     });
+  }
+
+  private shutdown(): void {
+    for (const timer of this.queueTimers.values()) clearTimeout(timer);
+    for (const room of this.rooms.values()) clearInterval(room.timer);
+    for (const sockets of this.socketsByUser.values()) {
+      for (const socket of sockets) socket.close();
+    }
+    this.queueTimers.clear();
+    this.botDifficultyByUser.clear();
+    this.queue.length = 0;
+    this.rooms.clear();
+    this.roomByUser.clear();
+    this.socketsByUser.clear();
   }
 
   private async authenticate(request: FastifyRequest): Promise<User | null> {
